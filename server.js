@@ -25,7 +25,16 @@ mongoose.connect(process.env.MONGO_URI, {
 const redisClient = createClient({
   url: process.env.REDIS_URL
 });
+redisClient.on("error", (err) => console.error("❌ Redis error:", err));
 
+(async () => {
+  try {
+    await redisClient.connect();
+    console.log("✅ Connected to Redis");
+  } catch (err) {
+    console.error("❌ Redis connect failed:", err);
+  }
+})();
 // ✅ Nodemailer
 const transporter = nodemailer.createTransport({
   service: "gmail",
