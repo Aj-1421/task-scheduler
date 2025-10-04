@@ -14,21 +14,30 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use(bodyParser.json());
 app.use(cors());
 
-// ✅ Nodemailer transporter (use Gmail App Password)
-// ✅ MongoDB
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
+// ✅ MongoDB Atlas connection
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ Connected to MongoDB Atlas"))
+  .catch(err => console.error("❌ MongoDB connection failed:", err));
 
-// ✅ Redis
+// ✅ Redis connection
 const redisClient = createClient({
   url: process.env.REDIS_URL,
   username: process.env.REDIS_USER || "default",
   password: process.env.REDIS_PASS
 });
 
-// ✅ Nodemailer
+redisClient.on("error", (err) => console.error("❌ Redis error:", err));
+
+(async () => {
+  try {
+    await redisClient.connect();
+    console.log("✅ Connected to Redis");
+  } catch (err) {
+    console.error("❌ Failed to connect Redis:", err);
+  }
+})();
+
+// ✅ Nodemailer transporter
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -37,14 +46,13 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-
-// ✅ Mongoose Schemas
+// ✅ Schemas
 const userSchema = new mongoose.Schema({
   firstName: String,
   lastName: String,
   dob: Date,
   username: { type: String, unique: true },
-  password: String, // hashed
+  password: String,
   email: { type: String, unique: true }
 });
 
@@ -59,7 +67,7 @@ const Task = mongoose.model("Task", taskSchema);
 
 // ----------- ROOT TEST -----------
 app.get("/", (req, res) => {
-  res.json({ message: "🚀 API is running with MongoDB Atlas..." });
+  res.json({ message: "🚀 API is running with MongoDB Atlas + Redis..." });
 });
 
 // ----------- SIGNUP -----------
@@ -68,12 +76,9 @@ app.post("/signup", async (req, res) => {
     const { firstName, lastName, dob, username, password, email } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = new User({
-      firstName, lastName, dob, username,
-      password: hashedPassword, email
-    });
-
+    const newUser = new User({ firstName, lastName, dob, username, password: hashedPassword, email });
     await newUser.save();
+
     res.json({ message: "✅ User registered successfully!" });
   } catch (err) {
     console.error("❌ Signup Error:", err);
@@ -104,7 +109,7 @@ app.post("/signin", async (req, res) => {
   }
 });
 
-// ----------- ADD TASK (email + reminder) -----------
+// ----------- ADD TASK -----------
 app.post("/tasks", async (req, res) => {
   try {
     const { name, dateTime, userId } = req.body;
@@ -112,18 +117,17 @@ app.post("/tasks", async (req, res) => {
     const newTask = new Task({ name, dateTime, userId });
     await newTask.save();
 
-    // Fetch user email
     const user = await User.findById(userId);
     if (user?.email) {
-      // Send confirmation email
+      // Send immediate email
       await transporter.sendMail({
-        from: '"Task Scheduler" <1421aj03@gmail.com>',
+        from: `"Task Scheduler" <${process.env.GMAIL_USER}>`,
         to: user.email,
         subject: "Task Created",
         text: `✅ Your task "${name}" has been scheduled at ${dateTime}.`
       });
 
-      // Schedule reminder email 30 minutes before
+      // Reminder 30 mins before
       const reminderTime = new Date(new Date(dateTime).getTime() - 30 * 60 * 1000);
       const delay = reminderTime.getTime() - Date.now();
 
@@ -131,7 +135,7 @@ app.post("/tasks", async (req, res) => {
         setTimeout(async () => {
           try {
             await transporter.sendMail({
-              from: '"Task Scheduler" <1421aj03@gmail.com>',
+              from: `"Task Scheduler" <${process.env.GMAIL_USER}>`,
               to: user.email,
               subject: "⏰ Task Reminder",
               text: `Reminder: Your task "${name}" is scheduled at ${dateTime}.`
@@ -151,7 +155,7 @@ app.post("/tasks", async (req, res) => {
   }
 });
 
-// ----------- GET TASKS FOR USER -----------
+// ----------- GET TASKS -----------
 app.get("/tasks/:userId", async (req, res) => {
   try {
     const tasks = await Task.find({ userId: req.params.userId });
@@ -162,7 +166,7 @@ app.get("/tasks/:userId", async (req, res) => {
   }
 });
 
-// ----------- SEND OTP -----------
+// ----------- OTP SEND -----------
 app.post("/send-otp", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: "Email required" });
@@ -173,7 +177,7 @@ app.post("/send-otp", async (req, res) => {
     await redisClient.setEx(`otp:${email}`, 300, otp);
 
     await transporter.sendMail({
-      from: '"Task Scheduler" <1421aj03@gmail.com>',
+      from: `"Task Scheduler" <${process.env.GMAIL_USER}>`,
       to: email,
       subject: "Your OTP Code",
       text: `Your OTP is ${otp}. It will expire in 5 minutes.`
@@ -186,7 +190,7 @@ app.post("/send-otp", async (req, res) => {
   }
 });
 
-// ----------- VERIFY OTP -----------
+// ----------- OTP VERIFY -----------
 app.post("/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ message: "Email and OTP required" });
@@ -206,5 +210,5 @@ app.post("/verify-otp", async (req, res) => {
 });
 
 // ----------- START SERVER -----------
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
