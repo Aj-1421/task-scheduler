@@ -15,35 +15,28 @@ app.use(bodyParser.json());
 app.use(cors());
 
 // ✅ Nodemailer transporter (use Gmail App Password)
-// ✅ MongoDB
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
-
-// ✅ Redis
-const redisClient = createClient({
-  url: process.env.REDIS_URL
-});
-redisClient.on("error", (err) => console.error("❌ Redis error:", err));
-
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log("✅ Connected to Redis");
-  } catch (err) {
-    console.error("❌ Redis connect failed:", err);
-  }
-})();
-// ✅ Nodemailer
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS
+    user: "1421aj03@gmail.com", // your Gmail
+    pass: "fzgr xvyk bsiy evpb" // your Gmail App Password
   }
 });
 
+// ✅ Redis client
+const redisClient = createClient({
+  url: "redis://default:sTsFchlcn6JA6Cz2SnkuiAP9ViCg0Gfn@redis-19610.c11.us-east-1-3.ec2.redns.redis-cloud.com:19610"
+});
+
+redisClient.on("error", (err) => console.error("❌ Redis error:", err));
+redisClient.connect().then(() => console.log("✅ Connected to Redis Cloud"));
+
+// ✅ MongoDB Atlas connection
+mongoose.connect("mongodb+srv://ajayjomon16_db_user:jANDLIhmr19XZ88k@hello.dosk5g3.mongodb.net/taskScheduler?retryWrites=true&w=majority&appName=hello", {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => console.log("✅ Connected to MongoDB Atlas"))
+  .catch(err => console.error("❌ MongoDB connection failed:", err));
 
 // ✅ Mongoose Schemas
 const userSchema = new mongoose.Schema({
