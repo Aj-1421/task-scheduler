@@ -1,13 +1,13 @@
 // calendar.js
 
 let calendar;
+const API_BASE = "https://task-scheduler-i90m.onrender.com"; // 👈 Render backend
 
-// parse userId reliably (handle NaN, null, "0" etc.)
+// parse userId reliably
 const userId = localStorage.getItem("userId");
 
 if (!userId) {
   alert("⚠️ Please log in first!");
-  // ensure no trailing spaces
   window.location.href = "signinPage.html";
 }
 
@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", function () {
       document.getElementById("taskDate").value = info.dateStr;
       document.getElementById("taskModal").style.display = "block";
     },
-    events: [] // filled from DB
+    events: [] // will be filled from DB
   });
 
   calendar.render();
@@ -40,7 +40,6 @@ document.addEventListener("DOMContentLoaded", function () {
   taskForm.addEventListener("submit", async function(e) {
     e.preventDefault();
 
-    // simple validation
     const date = document.getElementById("taskDate").value;
     const time = document.getElementById("taskTime").value;
     const name = document.getElementById("taskName").value?.trim();
@@ -49,40 +48,34 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!time) return alert("Please select a time.");
     if (!name) return alert("Please enter a task name.");
 
-    // Build local date-time string (no 'Z') so server receives local datetime:
-    // e.g. "2025-09-23T14:30:00"
     const eventDateTime = `${date}T${time}:00`;
 
     try {
-      // disable button to prevent double submit
       submitBtn.disabled = true;
       submitBtn.textContent = "Saving...";
 
-      const res = await fetch("http://localhost:5000/tasks", {
+      const res = await fetch(`${API_BASE}/tasks`, {   // 👈 updated
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, dateTime: eventDateTime, userId })
       });
 
-      // If server returned non-JSON (HTML error), read text and throw it for better debugging.
       const contentType = res.headers.get("content-type") || "";
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `Server returned ${res.status}`);
       }
 
-      // Parse JSON only if JSON is returned
       let result;
       if (contentType.includes("application/json")) {
         result = await res.json();
       } else {
-        // fallback: try text
         result = { message: await res.text() };
       }
 
       alert(result.message || "Task saved");
 
-      // Refresh tasks from DB (safer than only updating UI)
+      // Refresh tasks after saving
       await loadTasks();
 
       closeModal();
@@ -100,9 +93,8 @@ document.addEventListener("DOMContentLoaded", function () {
 // Load tasks and add to calendar
 async function loadTasks() {
   try {
-    const res = await fetch(`http://localhost:5000/tasks/${userId}`);
+    const res = await fetch(`${API_BASE}/tasks/${userId}`);   // 👈 updated
 
-    // handle non-ok responses
     if (!res.ok) {
       const text = await res.text();
       throw new Error(text || `Server returned ${res.status}`);
@@ -110,20 +102,14 @@ async function loadTasks() {
 
     const tasks = await res.json();
 
-    // remove existing events
     calendar.getEvents().forEach(ev => ev.remove());
 
-    // Add tasks to calendar
     tasks.forEach(task => {
-      // Task fields may differ based on DB column names; adjust if needed
-      const title = task.Name || task.name || "Task";
-      const start = task.DateTime || task.dateTime || task.Start || null;
+      const title = task.name || task.Name || "Task";
+      const start = task.dateTime || task.DateTime || task.Start || null;
 
       if (!start) return;
 
-      // If database returns SQL datetime without timezone, FullCalendar will
-      // treat it as local if no Z is present. If your DB returns UTC ISO strings
-      // with 'Z', FullCalendar will render correctly in local timezone.
       calendar.addEvent({
         title,
         start

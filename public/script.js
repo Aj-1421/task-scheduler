@@ -1,3 +1,5 @@
+const API_BASE = "https://task-scheduler-i90m.onrender.com"; // 👈 Render backend URL
+
 // Toggle between Sign In and Sign Up
 document.getElementById("signup-link").addEventListener("click", (e) => {
   e.preventDefault();
@@ -22,7 +24,7 @@ document.getElementById("sendOtpBtn").addEventListener("click", async () => {
   }
 
   try {
-    const response = await fetch("http://localhost:5000/send-otp", {
+    const response = await fetch(`${API_BASE}/send-otp`, {   // 👈 updated
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email })
@@ -48,7 +50,7 @@ document.getElementById("verifyOtpBtn").addEventListener("click", async () => {
   }
 
   try {
-    const response = await fetch("http://localhost:5000/verify-otp", {
+    const response = await fetch(`${API_BASE}/verify-otp`, {   // 👈 updated
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, otp })
@@ -86,7 +88,7 @@ document.getElementById("registerForm").addEventListener("submit", async (e) => 
   };
 
   try {
-    const response = await fetch("http://localhost:5000/signup", {
+    const response = await fetch(`${API_BASE}/signup`, {   // 👈 updated
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formData)
@@ -117,7 +119,7 @@ document.getElementById("signinForm").addEventListener("submit", async (e) => {
   };
 
   try {
-    const response = await fetch("http://localhost:5000/signin", {
+    const response = await fetch(`${API_BASE}/signin`, {   // 👈 updated
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(creds)
