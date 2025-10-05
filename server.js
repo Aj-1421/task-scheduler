@@ -37,14 +37,15 @@ redisClient.on("error", (err) => console.error("❌ Redis error:", err));
   }
 })();
 
-// ✅ Nodemailer transporter
+// ✅ Nodemailer transporter (SendGrid)
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  service: "SendGrid",
   auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS
+    user: "apikey",              // this must be literally the word "apikey"
+    pass: process.env.SENDGRID_API_KEY
   }
 });
+
 
 // ✅ Schemas
 const userSchema = new mongoose.Schema({
