@@ -6,6 +6,7 @@ const nodemailer = require("nodemailer");
 const { createClient } = require("redis");
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
+const sgTransport = require("nodemailer-sendgrid");
 
 const app = express();
 
@@ -38,13 +39,11 @@ redisClient.on("error", (err) => console.error("❌ Redis error:", err));
 })();
 
 // ✅ Nodemailer transporter (SendGrid)
-const transporter = nodemailer.createTransport({
-  service: "SendGrid",
-  auth: {
-    user: "apikey",              // this must be literally the word "apikey"
-    pass: process.env.SENDGRID_API_KEY
-  }
-});
+const transporter = nodemailer.createTransport(
+  sgTransport({
+    apiKey: process.env.SENDGRID_API_KEY
+  })
+);
 
 
 // ✅ Schemas
