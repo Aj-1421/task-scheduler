@@ -14,6 +14,11 @@ const app = express();
 app.use(express.static(path.join(__dirname, "public")));
 app.use(bodyParser.json());
 app.use(cors());
+if (!process.env.SENDGRID_API_KEY) {
+  console.error("❌ Missing SENDGRID_API_KEY");
+} else {
+  console.log("✅ SendGrid API key loaded");
+}
 
 // ✅ MongoDB (Atlas)
 mongoose.connect(process.env.MONGO_URI)
