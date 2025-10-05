@@ -1,58 +1,44 @@
+// server.js
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
-const nodemailer = require("nodemailer");
 const { createClient } = require("redis");
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
-const sgTransport = require("nodemailer-sendgrid");
+const sgMail = require("@sendgrid/mail");
 
 const app = express();
 
-// ✅ Serve frontend files
+// ✅ Middleware
 app.use(express.static(path.join(__dirname, "public")));
 app.use(bodyParser.json());
 app.use(cors());
 
-// ✅ MongoDB Atlas connection
+// ✅ MongoDB (Atlas)
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ Connected to MongoDB Atlas"))
   .catch(err => console.error("❌ MongoDB connection failed:", err));
 
-// ✅ Redis connection
+// ✅ Redis (Cloud)
 const redisClient = createClient({
   url: process.env.REDIS_URL,
   username: process.env.REDIS_USER || "default",
   password: process.env.REDIS_PASS
 });
-
 redisClient.on("error", (err) => console.error("❌ Redis error:", err));
+redisClient.connect().then(() => console.log("✅ Connected to Redis"));
 
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log("✅ Connected to Redis");
-  } catch (err) {
-    console.error("❌ Failed to connect Redis:", err);
-  }
-})();
+// ✅ SendGrid
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-// ✅ Nodemailer transporter (SendGrid)
-const transporter = nodemailer.createTransport(
-  sgTransport({
-    apiKey: process.env.SENDGRID_API_KEY
-  })
-);
-
-
-// ✅ Schemas
+// ✅ Mongoose Schemas
 const userSchema = new mongoose.Schema({
   firstName: String,
   lastName: String,
   dob: Date,
   username: { type: String, unique: true },
-  password: String,
+  password: String, // hashed
   email: { type: String, unique: true }
 });
 
@@ -67,7 +53,7 @@ const Task = mongoose.model("Task", taskSchema);
 
 // ----------- ROOT TEST -----------
 app.get("/", (req, res) => {
-  res.json({ message: "🚀 API is running with MongoDB Atlas + Redis..." });
+  res.json({ message: "🚀 API is running with MongoDB Atlas & SendGrid..." });
 });
 
 // ----------- SIGNUP -----------
@@ -76,9 +62,12 @@ app.post("/signup", async (req, res) => {
     const { firstName, lastName, dob, username, password, email } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = new User({ firstName, lastName, dob, username, password: hashedPassword, email });
-    await newUser.save();
+    const newUser = new User({
+      firstName, lastName, dob, username,
+      password: hashedPassword, email
+    });
 
+    await newUser.save();
     res.json({ message: "✅ User registered successfully!" });
   } catch (err) {
     console.error("❌ Signup Error:", err);
@@ -109,7 +98,7 @@ app.post("/signin", async (req, res) => {
   }
 });
 
-// ----------- ADD TASK -----------
+// ----------- ADD TASK (Send emails + reminder) -----------
 app.post("/tasks", async (req, res) => {
   try {
     const { name, dateTime, userId } = req.body;
@@ -117,26 +106,27 @@ app.post("/tasks", async (req, res) => {
     const newTask = new Task({ name, dateTime, userId });
     await newTask.save();
 
+    // Fetch user email
     const user = await User.findById(userId);
     if (user?.email) {
-      // Send immediate email
-      await transporter.sendMail({
-        from: `"Task Scheduler" <${process.env.GMAIL_USER}>`,
+      // Confirmation email
+      await sgMail.send({
         to: user.email,
+        from: process.env.SENDGRID_FROM, // 👈 must be verified sender in SendGrid
         subject: "Task Created",
         text: `✅ Your task "${name}" has been scheduled at ${dateTime}.`
       });
 
-      // Reminder 30 mins before
+      // Reminder email 30 minutes before
       const reminderTime = new Date(new Date(dateTime).getTime() - 30 * 60 * 1000);
       const delay = reminderTime.getTime() - Date.now();
 
       if (delay > 0) {
         setTimeout(async () => {
           try {
-            await transporter.sendMail({
-              from: `"Task Scheduler" <${process.env.GMAIL_USER}>`,
+            await sgMail.send({
               to: user.email,
+              from: process.env.SENDGRID_FROM,
               subject: "⏰ Task Reminder",
               text: `Reminder: Your task "${name}" is scheduled at ${dateTime}.`
             });
@@ -155,7 +145,7 @@ app.post("/tasks", async (req, res) => {
   }
 });
 
-// ----------- GET TASKS -----------
+// ----------- GET TASKS FOR USER -----------
 app.get("/tasks/:userId", async (req, res) => {
   try {
     const tasks = await Task.find({ userId: req.params.userId });
@@ -166,7 +156,7 @@ app.get("/tasks/:userId", async (req, res) => {
   }
 });
 
-// ----------- OTP SEND -----------
+// ----------- SEND OTP -----------
 app.post("/send-otp", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: "Email required" });
@@ -176,9 +166,9 @@ app.post("/send-otp", async (req, res) => {
   try {
     await redisClient.setEx(`otp:${email}`, 300, otp);
 
-    await transporter.sendMail({
-      from: `"Task Scheduler" <${process.env.GMAIL_USER}>`,
+    await sgMail.send({
       to: email,
+      from: process.env.SENDGRID_FROM, // 👈 verified sender
       subject: "Your OTP Code",
       text: `Your OTP is ${otp}. It will expire in 5 minutes.`
     });
@@ -190,7 +180,7 @@ app.post("/send-otp", async (req, res) => {
   }
 });
 
-// ----------- OTP VERIFY -----------
+// ----------- VERIFY OTP -----------
 app.post("/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ message: "Email and OTP required" });
@@ -211,4 +201,4 @@ app.post("/verify-otp", async (req, res) => {
 
 // ----------- START SERVER -----------
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
